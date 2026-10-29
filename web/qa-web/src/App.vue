@@ -1,7 +1,17 @@
 <script setup lang="ts">
+import { onMounted } from 'vue';
 import { RouterView } from 'vue-router';
 import AppHeader from './components/AppHeader.vue';
 import AppFooter from './components/AppFooter.vue';
+import { store } from './store';
+
+onMounted(() => {
+  // Doctor data is now served by qa-service-user (MySQL), load it once on startup.
+  // Errors are reflected in store.state.doctorsError and rendered by the pages.
+  store.loadDoctors().catch(() => {});
+  // Re-validate a persisted patient session (JWT) against the backend.
+  store.restorePatientSession();
+});
 </script>
 
 <template>

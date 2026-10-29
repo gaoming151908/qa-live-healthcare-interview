@@ -2,55 +2,105 @@
   <a-layout-header class="header">
     <div class="header-content">
       <div class="logo">
-        <img src="https://images.pexels.com/photos/40568/medical-appointment-doctor-healthcare-40568.jpeg?auto=compress&cs=tinysrgb&w=100" alt="QA Live Healthcare" />
-        <span>QA Live Healthcare</span>
+        <img
+          src="https://images.pexels.com/photos/40568/medical-appointment-doctor-healthcare-40568.jpeg?auto=compress&cs=tinysrgb&w=100"
+          :alt="t('app.name')"
+        />
+        <span>{{ t('app.name') }}</span>
       </div>
       <a-menu v-model:selectedKeys="selectedKeys" mode="horizontal" class="nav-menu">
         <a-menu-item key="home" @click="navigateTo('/')">
           <HomeOutlined />
-          首页
+          {{ t('nav.home') }}
         </a-menu-item>
         <a-menu-item key="consultation" @click="navigateTo('/consultation')">
           <MessageOutlined />
-          问诊
+          {{ t('nav.consultation') }}
         </a-menu-item>
         <a-menu-item key="doctors" @click="navigateTo('/doctors')">
           <TeamOutlined />
-          医生
+          {{ t('nav.doctors') }}
         </a-menu-item>
         <a-menu-item key="about" @click="navigateTo('/about')">
           <InfoCircleOutlined />
-          关于
+          {{ t('nav.about') }}
         </a-menu-item>
       </a-menu>
-      <a-button type="primary" class="login-btn" @click="navigateTo('/doctor/login')">
-        <UserOutlined />
-        医生登录
-      </a-button>
+
+      <div class="header-actions">
+        <!-- Language switcher: top-right of the home page, as required. -->
+        <a-select
+          v-if="isHome"
+          v-model:value="currentLocale"
+          class="language-select"
+          :options="localeOptions"
+          :aria-label="t('language.label')"
+          @change="handleLocaleChange"
+        />
+        <a-button type="primary" class="login-btn" @click="navigateTo('/doctor/login')">
+          <UserOutlined />
+          {{ t('nav.doctorLogin') }}
+        </a-button>
+      </div>
     </div>
   </a-layout-header>
 </template>
 
 <script setup lang="ts">
-import { ref, watch } from 'vue';
+import { computed, ref, watch } from 'vue';
 import { useRouter, useRoute } from 'vue-router';
-import { HomeOutlined, MessageOutlined, TeamOutlined, InfoCircleOutlined, UserOutlined } from '@ant-design/icons-vue';
+import { useI18n } from 'vue-i18n';
+import {
+  HomeOutlined,
+  MessageOutlined,
+  TeamOutlined,
+  InfoCircleOutlined,
+  UserOutlined,
+} from '@ant-design/icons-vue';
+import {
+  LOCALE_OPTIONS,
+  LOCALE_STORAGE_KEY,
+  type AppLocale,
+} from '../locales';
 
 const router = useRouter();
 const route = useRoute();
+const { t, locale } = useI18n();
 const selectedKeys = ref<string[]>(['home']);
 
-watch(() => route.path, (newPath) => {
-  if (newPath === '/') {
-    selectedKeys.value = ['home'];
-  } else if (newPath.startsWith('/consultation')) {
-    selectedKeys.value = ['consultation'];
-  } else if (newPath.startsWith('/doctors')) {
-    selectedKeys.value = ['doctors'];
-  } else if (newPath.startsWith('/about')) {
-    selectedKeys.value = ['about'];
+const localeOptions = LOCALE_OPTIONS;
+const currentLocale = ref<string>(locale.value);
+const isHome = computed(() => route.path === '/');
+
+watch(locale, (value) => {
+  currentLocale.value = value;
+});
+
+const handleLocaleChange = (value: string) => {
+  locale.value = value as AppLocale;
+  document.documentElement.lang = value;
+  try {
+    localStorage.setItem(LOCALE_STORAGE_KEY, value);
+  } catch {
+    // localStorage may be unavailable; switching still works for this session.
   }
-}, { immediate: true });
+};
+
+watch(
+  () => route.path,
+  (newPath) => {
+    if (newPath === '/') {
+      selectedKeys.value = ['home'];
+    } else if (newPath.startsWith('/consultation')) {
+      selectedKeys.value = ['consultation'];
+    } else if (newPath.startsWith('/doctors')) {
+      selectedKeys.value = ['doctors'];
+    } else if (newPath.startsWith('/about')) {
+      selectedKeys.value = ['about'];
+    }
+  },
+  { immediate: true },
+);
 
 const navigateTo = (path: string) => {
   router.push(path);
@@ -99,6 +149,7 @@ const navigateTo = (path: string) => {
   font-size: 20px;
   font-weight: 600;
   color: #1890ff;
+  white-space: nowrap;
 }
 
 .nav-menu {
@@ -106,6 +157,17 @@ const navigateTo = (path: string) => {
   border: none;
   margin: 0 40px;
   line-height: 64px;
+  min-width: 0;
+}
+
+.header-actions {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.language-select {
+  width: 110px;
 }
 
 .login-btn {
@@ -116,5 +178,15 @@ const navigateTo = (path: string) => {
 .login-btn:hover {
   background: #73d13d;
   border-color: #73d13d;
+}
+
+@media (max-width: 768px) {
+  .logo span {
+    display: none;
+  }
+
+  .nav-menu {
+    margin: 0 12px;
+  }
 }
 </style>

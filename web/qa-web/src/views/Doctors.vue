@@ -6,7 +6,29 @@
     </div>
 
     <div class="doctors-container">
-      <div class="doctors-grid">
+      <div v-if="doctorsLoading && allDoctors.length === 0" class="doctors-state">
+        <a-spin tip="正在加载医生数据…" />
+      </div>
+
+      <a-alert
+        v-else-if="doctorsError"
+        type="error"
+        message="医生数据加载失败，请确认后端服务已启动"
+        show-icon
+        class="doctors-state"
+      >
+        <template #action>
+          <a-button size="small" @click="reload">重试</a-button>
+        </template>
+      </a-alert>
+
+      <a-empty
+        v-else-if="allDoctors.length === 0"
+        description="暂无医生数据"
+        class="doctors-state"
+      />
+
+      <div v-else class="doctors-grid">
         <a-card
           v-for="doctor in allDoctors"
           :key="doctor.id"
@@ -48,13 +70,27 @@
 </template>
 
 <script setup lang="ts">
-import { computed } from 'vue';
+import { computed, onMounted } from 'vue';
 import { useRouter } from 'vue-router';
 import { store, Doctor } from '../store';
 
 const router = useRouter();
 
 const allDoctors = computed(() => store.state.doctors);
+const doctorsLoading = computed(() => store.state.doctorsLoading);
+const doctorsError = computed(() => store.state.doctorsError);
+
+const reload = () => {
+  store.loadDoctors(true).catch(() => {
+    // The error is rendered from store.state.doctorsError.
+  });
+};
+
+onMounted(() => {
+  if (store.state.doctors.length === 0) {
+    reload();
+  }
+});
 
 const goToConsultation = (doctor: Doctor) => {
   router.push(`/consultation/${doctor.username}`);
@@ -92,6 +128,12 @@ const goToConsultation = (doctor: Doctor) => {
   max-width: 1200px;
   margin: 0 auto;
   padding: 48px 24px;
+}
+
+.doctors-state {
+  display: flex;
+  justify-content: center;
+  padding: 48px 0;
 }
 
 .doctors-grid {

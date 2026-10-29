@@ -76,19 +76,15 @@ const rules = {
 
 const onFinish = async () => {
   loading.value = true;
-
-  setTimeout(() => {
-    const doctor = store.loginDoctor(formState.username, formState.password);
-
-    if (doctor) {
-      message.success('登录成功');
-      router.push(`/doctor/room/${doctor.username}`);
-    } else {
-      message.error('用户名或密码错误');
-    }
-
+  try {
+    const doctor = await store.loginDoctor(formState.username, formState.password);
+    message.success('登录成功');
+    router.push(`/doctor/room/${doctor.username}`);
+  } catch (error) {
+    message.error(error instanceof Error ? error.message : '登录失败，请稍后重试');
+  } finally {
     loading.value = false;
-  }, 500);
+  }
 };
 </script>
 

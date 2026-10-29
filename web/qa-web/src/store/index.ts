@@ -1,12 +1,21 @@
 import { reactive } from 'vue';
-import doctorData from '../data/doctor-user-list.json';
-import patientData from '../data/patient-user.json';
 import questionData from '../data/question-list.json';
+import {
+  fetchDoctors,
+  loginDoctor as loginDoctorRequest,
+  type DoctorApiModel,
+} from '../api/doctor';
+import {
+  fetchCurrentPatient,
+  loginPatient as loginPatientRequest,
+  registerPatient as registerPatientRequest,
+  type PatientApiModel,
+  type RegisterPayload,
+} from '../api/patient';
 
 export interface Doctor {
   id: string;
   username: string;
-  password: string;
   name: string;
   title: string;
   department: string;
@@ -17,11 +26,12 @@ export interface Doctor {
 }
 
 export interface Patient {
-  id: string;
+  id: number;
+  username: string;
   name: string;
-  birthday: string;
-  phone: string;
-  gender: string;
+  birthday: string | null;
+  phone: string | null;
+  gender: string | null;
 }
 
 export interface Question {
@@ -39,60 +49,167 @@ export interface Question {
 
 interface State {
   doctors: Doctor[];
-  patients: Patient[];
   questions: Question[];
   currentDoctor: Doctor | null;
   currentPatient: Patient | null;
+  patientToken: string | null;
+  doctorsLoading: boolean;
+  doctorsError: string | null;
 }
 
+const TOKEN_STORAGE_KEY = 'qa-patient-token';
+const PATIENT_STORAGE_KEY = 'qa-patient-profile';
+
+function readStorage(key: string): string | null {
+  try {
+    return localStorage.getItem(key);
+  } catch {
+    return null;
+  }
+}
+
+function readStoredPatient(): Patient | null {
+  const raw = readStorage(PATIENT_STORAGE_KEY);
+  if (!raw) {
+    return null;
+  }
+  try {
+    return JSON.parse(raw) as Patient;
+  } catch {
+    return null;
+  }
+}
+
+function writeStorage(key: string, value: string | null) {
+  try {
+    if (value === null) {
+      localStorage.removeItem(key);
+    } else {
+      localStorage.setItem(key, value);
+    }
+  } catch {
+    // Storage can be unavailable in private mode; the in-memory session still works.
+  }
+}
+
+function mapDoctor(dto: DoctorApiModel): Doctor {
+  return {
+    id: dto.id,
+    username: dto.username,
+    name: dto.name,
+    title: dto.title,
+    department: dto.department,
+    avatar: dto.avatar,
+    experience: dto.experience,
+    specialties: dto.specialties ?? [],
+    isActive: dto.isActive,
+  };
+}
+
+function mapPatient(dto: PatientApiModel): Patient {
+  return {
+    id: dto.id,
+    username: dto.username,
+    name: dto.name,
+    birthday: dto.birthday,
+    phone: dto.phone,
+    gender: dto.gender,
+  };
+}
+
+const storedToken = readStorage(TOKEN_STORAGE_KEY);
+
 const state = reactive<State>({
-  doctors: doctorData as Doctor[],
-  patients: patientData as Patient[],
+  doctors: [],
   questions: questionData as Question[],
   currentDoctor: null,
-  currentPatient: null,
+  currentPatient: readStoredPatient(),
+  patientToken: storedToken,
+  doctorsLoading: false,
+  doctorsError: null,
 });
+
+function applyPatientSession(token: string, patient: Patient) {
+  state.patientToken = token;
+  state.currentPatient = patient;
+  writeStorage(TOKEN_STORAGE_KEY, token);
+  writeStorage(PATIENT_STORAGE_KEY, JSON.stringify(patient));
+}
+
+function clearPatientSession() {
+  state.patientToken = null;
+  state.currentPatient = null;
+  writeStorage(TOKEN_STORAGE_KEY, null);
+  writeStorage(PATIENT_STORAGE_KEY, null);
+}
 
 export const store = {
   state,
 
-  loginDoctor(username: string, password: string): Doctor | null {
-    const doctor = state.doctors.find(
-      d => d.username === username && d.password === password
-    );
-    if (doctor) {
-      state.currentDoctor = doctor;
-      return doctor;
+  async loadDoctors(force = false): Promise<Doctor[]> {
+    if (state.doctorsLoading) {
+      return state.doctors;
     }
-    return null;
+    if (!force && state.doctors.length > 0) {
+      return state.doctors;
+    }
+    state.doctorsLoading = true;
+    state.doctorsError = null;
+    try {
+      const doctors = await fetchDoctors();
+      state.doctors = doctors.map(mapDoctor);
+      return state.doctors;
+    } catch (error) {
+      state.doctorsError = error instanceof Error ? error.message : '医生数据加载失败';
+      throw error;
+    } finally {
+      state.doctorsLoading = false;
+    }
+  },
+
+  async loginDoctor(username: string, password: string): Promise<Doctor> {
+    const doctor = mapDoctor(await loginDoctorRequest(username, password));
+    state.currentDoctor = doctor;
+    return doctor;
   },
 
   logoutDoctor() {
     state.currentDoctor = null;
   },
 
-  verifyPatient(name: string, birthday: string): Patient {
-    let patient = state.patients.find(
-      p => p.name === name && p.birthday === birthday
-    );
-
-    if (!patient) {
-      patient = {
-        id: `patient${Date.now()}`,
-        name,
-        birthday,
-        phone: '',
-        gender: '',
-      };
-      state.patients.push(patient);
+  /**
+   * Restores a patient session from localStorage and validates the token against
+   * GET /api/patients/me. An expired/invalid token simply results in a logged-out state.
+   */
+  async restorePatientSession(): Promise<void> {
+    if (!state.patientToken) {
+      return;
     }
+    try {
+      const patient = mapPatient(await fetchCurrentPatient(state.patientToken));
+      state.currentPatient = patient;
+      writeStorage(PATIENT_STORAGE_KEY, JSON.stringify(patient));
+    } catch {
+      clearPatientSession();
+    }
+  },
 
-    state.currentPatient = patient;
+  async loginPatient(username: string, password: string): Promise<Patient> {
+    const result = await loginPatientRequest(username, password);
+    const patient = mapPatient(result.patient);
+    applyPatientSession(result.token, patient);
+    return patient;
+  },
+
+  async registerPatient(payload: RegisterPayload): Promise<Patient> {
+    const result = await registerPatientRequest(payload);
+    const patient = mapPatient(result.patient);
+    applyPatientSession(result.token, patient);
     return patient;
   },
 
   logoutPatient() {
-    state.currentPatient = null;
+    clearPatientSession();
   },
 
   getQuestionsByDoctor(doctorId: string): Question[] {
@@ -143,16 +260,11 @@ export const store = {
   },
 
   getStatistics() {
-    const totalDoctors = state.doctors.length;
-    const totalQuestions = state.questions.length;
-    const activeSessions = state.questions.filter(q => q.status === 'pending').length;
-    const totalSessions = state.doctors.filter(d => d.isActive).length;
-
     return {
-      totalDoctors,
-      totalQuestions,
-      activeSessions,
-      totalSessions,
+      totalDoctors: state.doctors.length,
+      totalQuestions: state.questions.length,
+      activeSessions: state.questions.filter(q => q.status === 'pending').length,
+      totalSessions: state.doctors.filter(d => d.isActive).length,
     };
   },
 };
