@@ -1,0 +1,49 @@
+services:
+  # ---------------------------------------------------------------
+  # MySQL 8 - stores doctor data and patient accounts
+  # ---------------------------------------------------------------
+  mysql:
+    image: mysql:8.0
+    container_name: mysql_doctor
+    restart: always
+    command:
+      - --character-set-server=utf8mb4
+      - --collation-server=utf8mb4_unicode_ci
+    environment:
+      MYSQL_ROOT_PASSWORD: root
+      MYSQL_DATABASE: doctor_db
+      MYSQL_USER: qa_user
+      MYSQL_PASSWORD: Qa@123456
+      TZ: Asia/Shanghai
+    ports:
+      - "3306:3306"
+    volumes:
+      - mysql_data:/var/lib/mysql
+      # Schema + seed are applied automatically on first start.
+      - ./docker/mysql/init:/docker-entrypoint-initdb.d:ro
+    healthcheck:
+      test: ["CMD", "mysqladmin", "ping", "-h", "localhost", "-uroot", "-proot"]
+      interval: 5s
+      timeout: 5s
+      retries: 20
+
+  # ---------------------------------------------------------------
+  # phpMyAdmin - database management UI on http://localhost:8081
+  # Login: root / root  (or qa_user / Qa@123456)
+  # ---------------------------------------------------------------
+  phpmyadmin:
+    image: phpmyadmin/phpmyadmin:latest
+    container_name: phpmyadmin_doctor
+    restart: always
+    environment:
+      PMA_HOST: mysql
+      PMA_PORT: 3306
+      UPLOAD_LIMIT: 64M
+    ports:
+      - "8081:80"
+    depends_on:
+      mysql:
+        condition: service_healthy
+
+volumes:
+  mysql_data:

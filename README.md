@@ -1,40 +1,188 @@
-# 面试要求
+# QA Live Healthcare
 
-Fork当前项目到你自己的github账号，并在自己的账号下完成以下操作
+在线医疗问诊平台（Vue 3 + Spring Boot 3 + MySQL 8）。本仓库完成了面试任务中的三个需求：首页中英文切换、医生数据迁移至 MySQL 并提供 API、问诊用户用户名密码登录。
 
-## 技术要求
+> 原始需求见 [`项目要求.md`](./项目要求.md)。
 
-### 分支要求
+---
 
-创建特性分支，自己命名这个分支，在分支内完成以下编码/测试/文档编写过程。并在完成后将分支推送到你自己代码库。
+## 功能概览
 
-### 需求列表
+| 需求 | 实现 |
+| --- | --- |
+| 首页中英文切换 | `vue-i18n`，语言资源位于 `web/qa-web/src/locales`，右上角下拉菜单，选择持久化到 localStorage |
+| 医生数据 MySQL 化 | `docker-compose.yml` 启动 MySQL 8 + phpMyAdmin，`doctor` 表存储医生，`GET /api/doctors` 供前端列表使用 |
+| 问诊用户登录 | 注册 / 用户名密码登录，BCrypt 密码哈希，JWT 会话（24h），`GET /api/patients/me` 校验会话 |
+| 测试 | 仅用 curl 的 51 条断言，见 `tests/api-test.sh` 与 `docs/API_TEST.md` |
+| 文档 | PRD 模版、特性 PRD、设计文档、测试报告、提示词记录，见 [`docs/`](./docs) |
 
-1. 给web端的首页添加中英文切换能力，在页面右上角添加语言切换下拉菜单，在用户选择 **中文/English** 选项时动态切换页面显示内容到对应语言。中英文语言资源文件需要保存在 `web/qa-web/src/locales` 目录中。只需要处理首页本身，无需处理其他页面。
-2. 当前应用的数据全部使用json文件的方式在前端项目中存储，请将医生相关的数据使用mysql数据库存储。具体要求如下：
-    - 创建 docker-compose.yml 用于创建mysql数据库，并挂接phpmyadmin作为数据库服务器管理界面
-    - 在 qa-service-user 服务中创建可以支持前端 [医生页面](web/qa-web/src/views/Doctors.vue) 显示医生列表所需要的api
-    - 完成前后端联调
-3. 为问诊用户提供用户名密码登录方式
-    - 在 /docs 目录中编写规范的PRD文档模版
-    - 指导 AI使用以上模版编写此特性的PRD文档
-    - 指导 AI使用此PRD文档完成特性开发，如果需要进行拆分请在PRD文档中提供拆分步骤
+---
 
-### 测试要求
+## 技术栈
 
-1. 使用 curl 构建对于以上需求中所涉及的所有接口的测试
-2. 提供 /docs/API_TEST.md 用于描述以上接口测试流程，并指导AI使用这份文档完成测试并生成测试报告
+- **前端**：Vue 3.5、TypeScript、Vite 5、Ant Design Vue 4、vue-i18n 9
+- **后端**：Spring Boot 3.5、Spring Data JPA、Bean Validation、JJWT 0.12、BCrypt
+- **数据库**：MySQL 8（Docker），phpMyAdmin 管理界面
+- **测试**：curl + Python（仅解析 JSON）、JUnit 5、H2（单测）
 
-### 交付物要求
+---
 
-1. 根据需求列表完成的代码，并录制视频，视频中需要完整展示所完成的需求
-2. /docs 目录中的 PRD模版，PRD文档，设计文档（如果需要），API_TEST.md以及测试报告文档
-3. /docs/prompts.md 中列出在这个过程中你所使用的所有提示词
+## 目录结构
 
-## 面试流程要求
+```
+.
+├── docker-compose.yml            # MySQL + phpMyAdmin
+├── docker/mysql/init/
+│   ├── 01-schema.sql             # 建库、doctor/patient 表、qa_user 授权
+│   └── 02-seed.sql               # 医生与患者种子数据
+├── server/qa-service-user/       # Spring Boot 后端
+│   └── src/main/java/com/leansofx/qaserviceuser/
+│       ├── controller/           # DoctorController、PatientAuthController
+│       ├── service/              # DoctorService、PatientService、JwtService
+│       ├── entity/ repository/   # JPA
+│       ├── dto/ common/ config/  # 契约、异常、BCrypt、CORS
+│       └── ...
+├── web/qa-web/                   # Vue 前端
+│   └── src/
+│       ├── locales/              # zh-CN.ts、en-US.ts、index.ts
+│       ├── api/                  # http.ts、doctor.ts、patient.ts
+│       ├── store/                # 全局状态与会话持久化
+│       └── views/                # Home、Doctors、DoctorLogin、Consultation...
+├── tests/api-test.sh             # curl 接口回归套件
+└── docs/                         # PRD、设计、测试、提示词
+```
 
-针对以上 **技术要求** 部分完成对应的代码编写，测试编写和文档编写；以上所有内容需要全部使用AI Coding提示词的方式完成，不得直接编码（可以对AI生成的代码/文档进行手工调整）。完成以上编码后，基于你的分支创建指向main分支的PR，并发送PR链接。
+---
 
-完成以上代码编写过程后，请联系我并发送 视频 和 PR链接。
+## 快速开始
 
-面试时间要求：面试者需要在1天内完成以上面试流程。
+### 0. 环境要求
+
+- Docker Desktop（含 Docker Compose）
+- JDK 17+（`java -version`）
+- Node.js 18+ / npm
+- curl、Python 3（仅自动化测试使用）
+
+### 1. 启动数据库
+
+```bash
+docker compose up -d
+docker compose ps          # 等待 mysql 变为 healthy
+```
+
+- MySQL：`localhost:3306`，库 `doctor_db`
+  - 应用账号：`qa_user / Qa@123456`
+  - root：`root / root`
+- phpMyAdmin：<http://localhost:8081>（登录 `root / root` 或 `qa_user / Qa@123456`）
+
+首次启动会自动执行 `docker/mysql/init/` 下的建表与种子脚本。若使用已存在的数据卷导致脚本未执行，可手动执行：
+
+```bash
+docker exec -i mysql_doctor mysql -uroot -proot --default-character-set=utf8mb4 < docker/mysql/init/01-schema.sql
+docker exec -i mysql_doctor mysql -uroot -proot --default-character-set=utf8mb4 < docker/mysql/init/02-seed.sql
+```
+
+> 注意：`01-schema.sql` 会重建 `doctor` / `patient` 表，本地演示数据会重置。
+
+### 2. 启动后端
+
+```bash
+cd server/qa-service-user
+./mvnw spring-boot:run
+# 或先打包：./mvnw -DskipTests package && java -jar target/qa-service-user-0.0.1-SNAPSHOT.jar
+```
+
+- 地址：<http://localhost:8080>
+- 健康检查：<http://localhost:8080/actuator/health>
+- 可选环境变量：`DB_HOST`、`DB_PORT`、`DB_NAME`、`DB_USER`、`DB_PASSWORD`、`JWT_SECRET`、`SERVER_PORT`
+
+### 3. 启动前端
+
+```bash
+cd web/qa-web
+npm install
+npm run dev
+```
+
+- 地址：<http://localhost:5173>
+- 后端地址可通过 `VITE_API_BASE_URL` 覆盖（默认 `http://localhost:8080`）：
+
+```bash
+VITE_API_BASE_URL=http://localhost:8080 npm run dev
+```
+
+### 4. 运行测试
+
+```bash
+# 后端单测（H2，不依赖 Docker）
+cd server/qa-service-user && ./mvnw test
+
+# 前端类型检查 + 构建
+cd web/qa-web && npm run build
+
+# curl 接口回归（需后端与 MySQL 已启动）
+bash tests/api-test.sh
+```
+
+---
+
+## 演示账号
+
+| 角色 | 用户名 | 密码 | 说明 |
+| --- | --- | --- | --- |
+| 医生 | `dr-zhang-wei` | `123456` | 心内科，在线 |
+| 医生 | `dr-li-na` | `123456` | 儿科，在线 |
+| 医生 | `dr-liu-min` | `123456` | 妇产科，离线（按钮禁用） |
+| 患者 | `zhaoming` | `Patient@123` | 赵明 |
+| 患者 | `sunli` | `Patient@123` | 孙丽 |
+
+患者也可在问诊页“注册”Tab 自行创建账号。
+
+---
+
+## API 一览
+
+统一响应：`{ "code": 0, "message": "success", "data": ... }`
+
+| 方法 | 路径 | 鉴权 | 说明 |
+| --- | --- | --- | --- |
+| GET | `/api/doctors` | 无 | 医生列表；`?activeOnly=true` 仅在线 |
+| GET | `/api/doctors/{id}` | 无 | 医生详情 |
+| POST | `/api/doctors/login` | 无 | 医生登录 |
+| POST | `/api/patients/register` | 无 | 患者注册（自动登录） |
+| POST | `/api/patients/login` | 无 | 患者登录，返回 JWT |
+| GET | `/api/patients/me` | `Bearer <JWT>` | 当前患者信息 |
+
+错误码：`40001` 参数错误、`40101` 未认证/凭证错误、`40401` 不存在、`40901` 冲突、`50001` 服务器错误。
+
+详细契约：`docs/PRD-patient-login.md`、`docs/DESIGN.md`；测试示例：`docs/API_TEST.md`。
+
+---
+
+## 文档
+
+| 文档 | 说明 |
+| --- | --- |
+| [`docs/PRD_TEMPLATE.md`](docs/PRD_TEMPLATE.md) | 规范 PRD 模版 |
+| [`docs/PRD-patient-login.md`](docs/PRD-patient-login.md) | 问诊用户登录 PRD（含拆分步骤） |
+| [`docs/DESIGN.md`](docs/DESIGN.md) | 架构、数据模型、接口、关键取舍 |
+| [`docs/API_TEST.md`](docs/API_TEST.md) | curl 测试流程与用例定义 |
+| [`docs/TEST_REPORT.md`](docs/TEST_REPORT.md) | 实际测试报告（51/51 通过） |
+| [`docs/prompts.md`](docs/prompts.md) | 全流程 AI Coding 提示词记录 |
+
+---
+
+## 已知限制
+
+- 本地默认 JWT 密钥仅供开发，生产必须通过 `JWT_SECRET` 注入；
+- 未实现短信验证码、找回密码、登录限流、刷新令牌；
+- 患者会话存于 localStorage，生产建议改为 HttpOnly Cookie；
+- 问诊问题数据仍保存在前端 JSON/内存中，不在本次需求范围内。
+
+---
+
+## 分支与交付
+
+- 特性分支：`feature-interview-task`
+- 提交按需求拆分为 i18n、数据库与医生 API、患者登录、测试与文档；
+- PR 目标分支：`main`。
